@@ -47,7 +47,6 @@ map<std::string,ir::Function*>* get_lib_funcs();
 struct SymbolTable{
     vector<ScopeInfo> scope_stack;
     map<std::string,ir::Function*> functions;
-    int block_cnt;
 
     /**
      * @brief enter a new scope, record the infomation in scope stacks
@@ -96,6 +95,7 @@ struct Analyzer {
     int tmp_cnt;
     vector<ir::Instruction*> g_init_inst;
     SymbolTable symbol_table;
+    ir::Function* current_func;
 
     /**
      * @brief constructor
@@ -111,7 +111,6 @@ struct Analyzer {
 
     // analysis functions
     void analysisCompUnit(CompUnit*, ir::Program&);
-    void analysisFuncDef(FuncDef*, ir::Function&);
     void analysisDecl(Decl*, vector<ir::Instruction*>&);
     void analysisConstDecl(ConstDecl*, vector<ir::Instruction*>&);
     void analysisBType(BType*, vector<ir::Instruction*>&);
@@ -120,10 +119,11 @@ struct Analyzer {
     void analysisVarDecl(VarDecl*, vector<ir::Instruction*>&);
     void analysisVarDef(VarDef*, vector<ir::Instruction*>&);
     void analysisInitVal(InitVal*, vector<ir::Instruction*>&);
+    void analysisFuncDef(FuncDef*, ir::Function&);
     void analysisFuncType(FuncType*, vector<ir::Instruction*>&);
-    void analysisFuncFParam(FuncFParam*, vector<ir::Instruction*>&);
-    void analysisFuncFParams(FuncFParams*, vector<ir::Instruction*>&);
-    void analysisBlock(Block*, ir::Function&);
+    void analysisFuncFParam(FuncFParam*, ir::Function&);
+    void analysisFuncFParams(FuncFParams*, ir::Function&);
+    void analysisBlock(Block*, vector<ir::Instruction*>&);
     void analysisBlockItem(BlockItem*, vector<ir::Instruction*>&);
     void analysisStmt(Stmt*, vector<ir::Instruction*>&);
     void analysisExp(Exp*, vector<ir::Instruction*>&);
