@@ -110,6 +110,7 @@ struct Analyzer {
     Analyzer& operator=(const Analyzer&) = delete;
 
     // analysis functions
+    void type_transform(ir::Operand& , ir::Operand& , vector<ir::Instruction*>& );
     void analysisCompUnit(CompUnit*, ir::Program&);
     void analysisDecl(Decl*, vector<ir::Instruction*>&);
     void analysisConstDecl(ConstDecl*, vector<ir::Instruction*>&);
@@ -133,7 +134,7 @@ struct Analyzer {
     void analysisPrimaryExp(PrimaryExp*, vector<ir::Instruction*>&);
     void analysisUnaryExp(UnaryExp*, vector<ir::Instruction*>&);
     void analysisUnaryOp(UnaryOp*, vector<ir::Instruction*>&);
-    void analysisFuncRParams(FuncRParams*, vector<ir::Instruction*>&);
+    void analysisFuncRParams(FuncRParams*, vector<ir::Instruction*>&, ir::CallInst&);
     void analysisMulExp(MulExp*, vector<ir::Instruction*>&);
     void analysisAddExp(AddExp*, vector<ir::Instruction*>&);
     void analysisRelExp(RelExp*, vector<ir::Instruction*>&);

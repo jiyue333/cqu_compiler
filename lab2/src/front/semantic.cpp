@@ -15,6 +15,88 @@ using ir::Operator;
 #define ANALYSIS(node, type, index) auto node = dynamic_cast<type*>(root->children[index]); assert(node); analysis##type(node, buffer);
 #define COPY_EXP_NODE(from, to) to->is_computable = from->is_computable; to->v = from->v; to->t = from->t;
 
+// 类型转换
+void frontend::Analyzer::type_transform(Operand& a, Operand& b, vector<Instruction*>& buffer){
+    if (a.type == Type::Int){
+        if (b.type == Type::Float){     // Int-Float
+            auto tmp_op = Operand("t" + std::to_string(tmp_cnt++), Type::Float);    // a转Float
+            buffer.push_back(new Instruction(a, {}, tmp_op, Operator::cvt_i2f));
+            a = tmp_op;   
+        }else if (b.type == Type::FloatLiteral){    // Int-FloatLiteral
+            auto tmp_op1 = Operand("t" + std::to_string(tmp_cnt++), Type::Float);    // a转Float
+            buffer.push_back(new Instruction(a, {}, tmp_op1, Operator::cvt_i2f));
+
+            auto tmp_op2 = Operand("t" + std::to_string(tmp_cnt++), Type::Float);    // b转Float
+            buffer.push_back(new Instruction(b, {}, tmp_op2, Operator::fdef));
+            
+            a = tmp_op1;
+            b = tmp_op2;
+        }else if (b.type == Type::IntLiteral){      // Int-IntLiteral
+            auto tmp_op = Operand("t" + std::to_string(tmp_cnt++), Type::Int);    // b转Int
+            buffer.push_back(new Instruction(b, {}, tmp_op, Operator::def));
+
+            b = tmp_op;
+        }
+    }else if (a.type == Type::IntLiteral){      // IntLiteral-Float
+        if (b.type == Type::Float){
+            auto tmp_op = Operand("t" + std::to_string(tmp_cnt++), Type::Float);    // a转Float
+            buffer.push_back(new Instruction(Operand(a.name, Type::FloatLiteral), {}, tmp_op, Operator::fdef));
+            
+            a = tmp_op;
+
+        }else if (b.type == Type::Int){     // IntLiteral-Int
+
+            auto tmp_op = Operand("t" + std::to_string(tmp_cnt++), Type::Int);    // a转Int
+            buffer.push_back(new Instruction(a, {}, tmp_op, Operator::def));
+
+            a = tmp_op;
+        }else if (b.type == Type::IntLiteral){      // IntLiteral-IntLiteral
+            
+            auto tmp_op1 = Operand("t" + std::to_string(tmp_cnt++), Type::Int);    // a转Int
+            buffer.push_back(new Instruction(a, {}, tmp_op1, Operator::def));
+
+            auto tmp_op2 = Operand("t" + std::to_string(tmp_cnt++), Type::Int);    // b转Int
+            buffer.push_back(new Instruction(b, {}, tmp_op2, Operator::def));
+
+            a = tmp_op1;
+            b = tmp_op2;
+        }
+    }else if(a.type == Type::Float){    // Float-Int
+        if (b.type == Type::Int){
+            auto tmp_op = Operand("t" + std::to_string(tmp_cnt++), Type::Float);    // b转Float
+            buffer.push_back(new Instruction(b, {}, tmp_op, Operator::cvt_i2f));
+
+            b = tmp_op;
+        }else if (b.type == Type::IntLiteral){  // Float-IntLiteral
+            auto tmp_op = Operand("t" + std::to_string(tmp_cnt++), Type::Float);    // b转Float
+            buffer.push_back(new Instruction(Operand(b.name, Type::FloatLiteral), {}, tmp_op, Operator::fdef));
+
+            b = tmp_op;
+        }else if (b.type == Type::FloatLiteral){  // Float-FloatLiteral
+            auto tmp_op = Operand("t" + std::to_string(tmp_cnt++), Type::Int);    // b转Float
+            buffer.push_back(new Instruction(b, {}, tmp_op, Operator::fdef));
+
+            b = tmp_op;
+        }
+    }else if (a.type == Type::FloatLiteral){
+        if (b.type == Type::Int){
+            auto tmp_op1 = Operand("t" + std::to_string(tmp_cnt++), Type::Float);    // a转Float
+            buffer.push_back(new Instruction(Operand(a.name, Type::FloatLiteral), {}, tmp_op1, Operator::fdef));
+
+            auto tmp_op2 = Operand("t" + std::to_string(tmp_cnt++), Type::Float);    // b转Float
+            buffer.push_back(new Instruction(b, {}, tmp_op2, Operator::cvt_i2f));
+
+            a = tmp_op1;
+            b = tmp_op2;
+        }else if (b.type == Type::Float){
+            auto tmp_op = Operand("t" + std::to_string(tmp_cnt++), Type::Float);    // a转Float
+            buffer.push_back(new Instruction(Operand(a.name, Type::FloatLiteral), {}, tmp_op, Operator::fdef));
+            
+            a = tmp_op;
+        }
+    }
+}
+
 map<std::string,ir::Function*>* frontend::get_lib_funcs() {
     static map<std::string,ir::Function*> lib_funcs = {
         {"getint", new Function("getint", Type::Int)},
@@ -691,11 +773,11 @@ void frontend::Analyzer::analysisStmt(Stmt* root, vector<ir::Instruction*>& buff
             analysisExp(exp, tmp);
             buffer.insert(buffer.end(), tmp.begin(), tmp.end());     // 插入exp IR
 
-            std::cout<<curr_function->name<<std::endl;
-            std::cout<<toString(curr_function->returnType)<<std::endl;
+            std::cout<<current_func->name<<std::endl;
+            std::cout<<toString(current_func->returnType)<<std::endl;
 
             // 根据函数返回类型进行返回
-            if (curr_function->returnType == Type::Int)
+            if (current_func->returnType == Type::Int)
             {
                 // Int or IntLiteral
                 if (exp->t == Type::Int || exp->t == Type::IntLiteral){
@@ -717,7 +799,7 @@ void frontend::Analyzer::analysisStmt(Stmt* root, vector<ir::Instruction*>& buff
                     std::cout<<toString(exp->t)<<std::endl;
                 }
             }
-            else if (curr_function->returnType == Type::Float)
+            else if (current_func->returnType == Type::Float)
             {
                 // Float or FloatLiteral
                 if (exp->t == Type::Float || exp->t == Type::FloatLiteral){
@@ -758,7 +840,7 @@ void frontend::Analyzer::analysisCond(Cond* root, vector<ir::Instruction*>& buff
 }
 
 // LVal -> Ident {'[' Exp ']'}
-void frontend::Analyzer::analysisLVal(LVal*, vector<ir::Instruction*>&) {
+void frontend::Analyzer::analysisLVal(LVal* root, vector<ir::Instruction*>& buffer) {
    auto tk = dynamic_cast<Term*>(root->children[0])->token;    // 获取Term节点的token
 
 
@@ -792,7 +874,6 @@ void frontend::Analyzer::analysisLVal(LVal*, vector<ir::Instruction*>&) {
 
         // Ident '[' Exp ']'
         if ((int)root->children.size() == 4){     // 一维数组
-
             ANALYSIS(exp, Exp, 2);
             Type t = (root->t == Type::IntPtr) ? Type::Int : Type::Float;
             root->t = t;
@@ -874,27 +955,494 @@ void frontend::Analyzer::analysisPrimaryExp(PrimaryExp* root, vector<ir::Instruc
 
 
 // UnaryExp -> PrimaryExp | UnaryOp UnaryExp
-void frontend::Analyzer::analysisUnaryExp(UnaryExp*, vector<ir::Instruction*>&) {
-    TODO;
+void frontend::Analyzer::analysisUnaryExp(UnaryExp* root, vector<ir::Instruction*>& buffer) {
+    if (root->children[0]->type == NodeType::PRIMARYEXP){   // UnaryExp -> PrimaryExp
+        ANALYSIS(primaryexp, PrimaryExp, 0);
+        COPY_EXP_NODE(primaryexp, root);    
+
+    }else if (root->children[0]->type == NodeType::TERMINAL){   // UnaryExp -> Ident '(' [FuncRParams] ')'
+        
+        std::string func_name = dynamic_cast<Term*>(root->children[0])->token.value;   // 函数名
+        auto op1 = Operand(func_name, Type::null);  // 操作数一为函数名
+        Type t = symbol_table.functions[func_name]->returnType;     //函数返回值类型
+        auto des = Operand("t" + std::to_string(tmp_cnt++), t);     // 目的操作数为临时变量
+        if ((int)root->children.size() == 3){    // 没有参数
+            buffer.push_back(new ir::CallInst(op1, des));
+        }else{
+            auto callinst = new ir::CallInst(op1, vector<Operand>(), des);  // 函数调用IR
+            GET_CHILD_PTR(funcrparams, FuncRParams, 2);     // 获取FuncRParams节点
+            assert(funcrparams);
+            analysisFuncRParams(funcrparams, buffer, *callinst);
+            buffer.push_back(callinst);     // 插入函数调用IR
+        }
+        root->v = des.name;
+        root->t = t;
+
+    }else{      // UnaryExp -> UnaryOp UnaryExp
+        auto tk = dynamic_cast<Term*>(root->children[0]->children[0])->token.type;
+        ANALYSIS(unaryexp, UnaryExp, 1);    // 分析UnaryExp节点
+        if (tk == TokenType::PLUS){     // "+"
+            COPY_EXP_NODE(unaryexp, root);
+        }else{      // "-" "!"
+            root->is_computable = unaryexp->is_computable;
+            root->t = unaryexp->t;
+            if (unaryexp->is_computable){   // 可简化
+                if (unaryexp->t == Type::IntLiteral){  // Int立即数
+                    if (tk == TokenType::MINU){
+                        root->v = std::to_string(- std::stoi(unaryexp->v));
+                    }else{
+                        root->v = std::to_string(! std::stoi(unaryexp->v));
+                    }
+                }else{  // Float
+                    if (tk == TokenType::MINU){
+                        root->v = std::to_string(- std::stof(unaryexp->v));
+                    }else{
+                        root->v = std::to_string(! std::stof(unaryexp->v));
+                    }
+                }
+            }else{  // 不可简化
+                if (unaryexp->t == Type::Int){      // Int
+                    auto op1 = Operand(unaryexp->v, unaryexp->t);
+                    auto tmp = Operand("t" + std::to_string(tmp_cnt++), Type::Int);
+                    if (tk == TokenType::MINU){
+                        auto tmp1 = Operand("t" + std::to_string(tmp_cnt++), Type::Int);
+                        buffer.push_back(new Instruction(Operand("0", Type::IntLiteral), Operand(), tmp, Operator::def));
+                        buffer.push_back(new Instruction(tmp, op1, tmp1, Operator::sub));
+                        root->v = tmp1.name;
+                    }else{
+                        buffer.push_back(new Instruction(op1, Operand(), tmp, Operator::_not));
+                        root->v = tmp.name;
+                    }
+                }else{      // Float,不可能出现!Float
+                    auto op1 = Operand(unaryexp->v, unaryexp->t);
+                    auto tmp = Operand("t" + std::to_string(tmp_cnt++), Type::Float);
+                    if (tk == TokenType::MINU){
+                        auto tmp1 = Operand("t" + std::to_string(tmp_cnt++), Type::Float);
+                        buffer.push_back(new Instruction(Operand("0.0", Type::FloatLiteral), Operand(), tmp, Operator::fdef));
+                        buffer.push_back(new Instruction(tmp, op1, tmp1, Operator::fsub));
+                        root->v = tmp1.name;
+                    }
+                }
+            }
+        }
+    }
 }
-void frontend::Analyzer::analysisMulExp(MulExp*, vector<ir::Instruction*>&) {
-    TODO;
+
+// FuncRParams -> Exp { ',' Exp }
+void frontend::Analyzer::analysisFuncRParams(FuncRParams* root, vector<ir::Instruction*>& buffer, ir::CallInst& callinst){
+    ANALYSIS(exp1, Exp, 0);  // 分析Exp节点
+    callinst.argumentList.push_back(Operand(exp1->v, exp1->t));
+    int i = 1;
+    while (i < (int)root->children.size()){
+        ANALYSIS(exp2, Exp, i+1);  // 分析Exp节点
+        callinst.argumentList.push_back(Operand(exp2->v, exp2->t));
+        i += 2;
+    }
 }
-void frontend::Analyzer::analysisAddExp(AddExp*, vector<ir::Instruction*>&) {
-    TODO;
+
+
+// MulExp -> UnaryExp { ('*' | '/' | '%') UnaryExp }
+void frontend::Analyzer::analysisMulExp(MulExp* root, vector<ir::Instruction*>& buffer){
+
+    if ((int)root->children.size() == 1){
+
+        ANALYSIS(unaryexp1, UnaryExp, 0);    // 分析unaryexp节点
+        COPY_EXP_NODE(unaryexp1, root);    // 向上传递属性
+
+    }else if ((int)root->children.size() > 1){
+        ANALYSIS(unaryexp1, UnaryExp, 0);    // 分析unaryexp节点
+        root->is_computable = unaryexp1->is_computable;
+        root->t = unaryexp1->t;
+        root->v = unaryexp1->v;
+        int i = 1;
+        while (i < (int)root->children.size()){
+            auto tk = dynamic_cast<Term*>(root->children[i])->token.type;   // 运算符
+            ANALYSIS(unaryexp2, UnaryExp, i+1);     // 分析下一个unaryexp节点
+            if(root->is_computable && unaryexp2->is_computable){    // 可化简
+                root->is_computable = true;
+                if(root->t != unaryexp2->t){   // 类型不一致
+                    root->t = Type::FloatLiteral;
+                }
+
+                if(root->t == Type::IntLiteral){    // 整数立即数间运算
+                    if (tk == TokenType::MULT){
+                        root->v = std::to_string(std::stoi(root->v) * std::stoi(unaryexp2->v));
+                    }else if (tk == TokenType::DIV){
+                        root->v = std::to_string(std::stoi(root->v) / std::stoi(unaryexp2->v));
+                    }else{
+                        root->v = std::to_string(std::stoi(root->v) % std::stoi(unaryexp2->v));
+                    }
+                }else{      // 浮点立即数间运算
+                    if (tk == TokenType::MULT){
+                        root->v = std::to_string(std::stof(root->v) * std::stof(unaryexp2->v));
+                    }else if (tk == TokenType::DIV){
+                        root->v = std::to_string(std::stof(root->v) / std::stof(unaryexp2->v));
+                    }
+                }
+            }else{  // 不可化简
+                root->is_computable = false;
+                Operand op1 = Operand(root->v, root->t);
+                Operand op2 = Operand(unaryexp2->v, unaryexp2->t);
+                Operand tmp = Operand("t" + std::to_string(tmp_cnt++), root->t);
+                if (tk == TokenType::MULT){
+                    if (root->t == unaryexp2->t){   // 类型一致
+                        if (tmp.type == Type::Int){
+                            buffer.push_back(new Instruction({op1, op2, tmp, Operator::mul}));  // mul IR
+                        }else{
+                            buffer.push_back(new Instruction({op1, op2, tmp, Operator::fmul}));  // fmul IR
+                        }
+                    }else{      // 类型不一致
+                        type_transform(op1, op2, buffer);
+                        tmp.type = op1.type;     // 输出类型为其中一个
+                        if (tmp.type == Type::Int){
+                            buffer.push_back(new Instruction({op1, op2, tmp, Operator::mul}));  // mul IR
+                        }else{
+                            buffer.push_back(new Instruction({op1, op2, tmp, Operator::fmul}));  // fmul IR
+                        }
+                    }
+                }else if (tk == TokenType::DIV){
+                    if (root->t == unaryexp2->t){   // 类型一致
+                        if (tmp.type == Type::Int){
+                            buffer.push_back(new Instruction({op1, op2, tmp, Operator::div}));  // div IR
+                        }else{
+                            buffer.push_back(new Instruction({op1, op2, tmp, Operator::fdiv}));  // fdiv IR
+                        }
+                    }else{
+                        type_transform(op1, op2, buffer);
+                        tmp.type = op1.type;
+                        if(tmp.type == Type::Int){
+                            buffer.push_back(new Instruction({op1, op2, tmp, Operator::div}));  // div IR
+                        }else{
+                            buffer.push_back(new Instruction({op1, op2, tmp, Operator::fdiv}));  // fdiv IR
+                        }
+                    }
+                }else{
+                    buffer.push_back(new Instruction({op1, op2, tmp, Operator::mod}));  // mod IR
+                }
+                root->v = tmp.name;     // 临时变量名称
+                root->t = tmp.type;     // 临时变量类型
+            }
+
+            i += 2;
+        }
+    }
 }
-void frontend::Analyzer::analysisRelExp(RelExp*, vector<ir::Instruction*>&) {
-    TODO;
+
+
+// AddExp -> MulExp { ('+' | '-') MulExp }
+void frontend::Analyzer::analysisAddExp(AddExp* root, vector<ir::Instruction*>& buffer){
+
+    if ((int)root->children.size() == 1){
+
+        ANALYSIS(mulexp1, MulExp, 0);    // 分析mulexp节点
+        COPY_EXP_NODE(mulexp1, root);    // 向上传递属性
+
+    }else if ((int)root->children.size() > 1){  // 多个元素相加
+
+        ANALYSIS(mulexp1, MulExp, 0);    // 分析mulexp节点
+
+        root->is_computable = mulexp1->is_computable;
+        root->t = mulexp1->t;
+        root->v = mulexp1->v;
+
+        int i = 1;
+        while (i < (int)root->children.size()){
+
+            auto tk = dynamic_cast<Term*>(root->children[i])->token.type;   // 运算符
+            ANALYSIS(mulexp2, MulExp, i+1);     // 分析下一个mulexp节点
+            if(root->is_computable && mulexp2->is_computable){    // 可化简
+                root->is_computable = true;
+                if(root->t != mulexp2->t){   // 类型不一致
+                    root->t = Type::FloatLiteral;
+                }
+
+                if(root->t == Type::IntLiteral){    // 整数立即数间运算
+                    if (tk == TokenType::PLUS){
+                        root->v = std::to_string(std::stoi(root->v) + std::stoi(mulexp2->v));    // 计算结果,先只考虑整数相加
+                    }else{  
+                        root->v = std::to_string(std::stoi(root->v) - std::stoi(mulexp2->v));
+                    }
+                }else{      // 浮点立即数间运算
+                    if (tk == TokenType::PLUS){
+                        root->v = std::to_string(std::stof(root->v) + std::stof(mulexp2->v));    // 计算结果,先只考虑整数相加
+                    }else{  
+                        root->v = std::to_string(std::stof(root->v) - std::stof(mulexp2->v));
+                    }
+                }
+            }else{  // 不可化简
+                root->is_computable = false;
+                Operand op1 = Operand(root->v, root->t);
+                Operand op2 = Operand(mulexp2->v, mulexp2->t);
+                Operand tmp = Operand("t" + std::to_string(tmp_cnt++), root->t);
+                if (!root->is_computable && !mulexp2->is_computable){   // 两个都是变量
+                    if (tk == TokenType::PLUS){
+                        if (root->t == mulexp2->t){   // 类型一致
+                            if (tmp.type == Type::Int){
+                                buffer.push_back(new Instruction({op1, op2, tmp, Operator::add}));  // add IR
+                            }else{
+                                buffer.push_back(new Instruction({op1, op2, tmp, Operator::fadd}));  // fadd IR
+                            }
+                        }else{  // 类型不一致
+                            type_transform(op1, op2, buffer);
+                            tmp.type = op1.type;
+                            if (tmp.type == Type::Int){
+                                buffer.push_back(new Instruction({op1, op2, tmp, Operator::add}));  // add IR
+                            }else{
+                                buffer.push_back(new Instruction({op1, op2, tmp, Operator::fadd}));  // fadd IR
+                            }
+                        }
+                    }else{
+                        if (root->t == mulexp2->t){   // 类型一致
+                            if (tmp.type == Type::Int){
+                                buffer.push_back(new Instruction({op1, op2, tmp, Operator::sub}));  // sub IR
+                            }else{
+                                buffer.push_back(new Instruction({op1, op2, tmp, Operator::fsub}));  // fsub IR
+                            }
+                        }else{  // 类型不一致
+                            type_transform(op1, op2, buffer);
+                            tmp.type = op1.type;
+                            if (tmp.type == Type::Int){
+                                buffer.push_back(new Instruction({op1, op2, tmp, Operator::sub}));
+                            }else{
+                                buffer.push_back(new Instruction({op1, op2, tmp, Operator::fsub}));  // fadd IR
+                            }
+                        }
+                    }
+                }else{
+                    if (tk == TokenType::PLUS){
+                        if (root->t == Type::Int && mulexp2->t == Type::IntLiteral){    // a+1
+                            tmp.type = Type::Int;
+                            buffer.push_back(new Instruction({op1, op2, tmp, Operator::addi}));  // addi IR
+                        }else if (root->t == Type::IntLiteral && mulexp2->t == Type::Int){  // 1+a
+                            tmp.type = Type::Int;
+                            buffer.push_back(new Instruction({op2, op1, tmp, Operator::addi}));  // addi IR
+                        }else{  // a+0.1, 0.1+a ...
+                            tmp.type = Type::Float;
+                            type_transform(op1, op2, buffer);
+                            buffer.push_back(new Instruction({op1, op2, tmp, Operator::fadd}));  // add IR
+                        }
+                    }else{
+                        if (root->t == Type::Int && mulexp2->t == Type::IntLiteral){    // a-1
+                            tmp.type = Type::Int;
+                            auto subi_inst = new Instruction({op1, op2, tmp, Operator::subi});
+                            buffer.push_back(subi_inst);  // subi IR
+
+                        }else{  // 1-a, 0.1-a, a-0.1
+                            type_transform(op1, op2, buffer);
+                            tmp.type = op1.type;
+                            if (tmp.type == Type::Int){      // 1-a
+                                buffer.push_back(new Instruction({op2, op1, tmp, Operator::sub}));  // sub IR
+                            }else{
+                                buffer.push_back(new Instruction({op2, op1, tmp, Operator::fsub}));  // fsub IR
+                            }
+                        }
+                    }
+                }
+                root->v = tmp.name;     // 临时变量名称
+                root->t = tmp.type;     // 临时变量类型
+            }
+
+            i += 2;
+        }
+    }
 }
-void frontend::Analyzer::analysisEqExp(EqExp*, vector<ir::Instruction*>&) {
-    TODO;
+
+
+// RelExp -> AddExp { ('<' | '>' | '<=' | '>=') AddExp }
+void frontend::Analyzer::analysisRelExp(RelExp* root,vector<ir::Instruction*>& buffer){
+
+     if ((int)root->children.size() == 1){    // RelExp -> AddExp
+     
+        ANALYSIS(addexp, AddExp, 0);
+        COPY_EXP_NODE(addexp, root);
+
+    }else{      // RelExp -> AddExp { ('<' | '>' | '<=' | '>=') AddExp }
+
+        ANALYSIS(addexp1, AddExp, 0);
+        root->is_computable = addexp1->is_computable;
+        root->t = addexp1->t;
+        root->v = addexp1->v;
+
+        int i = 1;
+        while (i < (int)root->children.size()){
+
+            ANALYSIS(addexp2, AddExp, i+1);     // 分析AddExp节点
+            auto tk = dynamic_cast<Term*>(root->children[i])->token.type;   // 运算符
+
+            root->is_computable = false;     // 不可化简
+            Operand op1 = Operand(root->v, root->t);
+            Operand op2 = Operand(addexp2->v, addexp2->t);
+            type_transform(op1, op2, buffer);   // 类型保持一致
+            Operand des = Operand("t" + std::to_string(tmp_cnt++), Type::Int);  // 临时操作数
+            if (tk == TokenType::LSS){
+                if (op1.type == Type::Int){
+                    buffer.push_back(new Instruction({op1, op2, des, Operator::lss}));
+                }else{
+                    des.type = Type::Float;
+                    buffer.push_back(new Instruction({op1, op2, des, Operator::flss}));
+                }
+            }
+            else if (tk == TokenType::GTR){
+                if (op1.type == Type::Int){
+                    buffer.push_back(new Instruction({op1, op2, des, Operator::gtr}));
+                }else{
+                    des.type = Type::Float;
+                    buffer.push_back(new Instruction({op1, op2, des, Operator::fgtr}));
+                }
+            }
+            else if (tk == TokenType::LEQ){
+                if (op1.type == Type::Int){
+                    buffer.push_back(new Instruction({op1, op2, des, Operator::leq}));
+                }else{
+                    des.type = Type::Float;
+                    buffer.push_back(new Instruction({op1, op2, des, Operator::fleq}));
+                }
+            }
+            else{
+                if (op1.type == Type::Int){
+                    buffer.push_back(new Instruction({op1, op2, des, Operator::geq}));
+                }else{
+                    des.type = Type::Float;
+                    buffer.push_back(new Instruction({op1, op2, des, Operator::fgeq}));
+                }
+            }
+
+            root->v = des.name;
+            root->t = Type::Int;
+
+            i += 2;
+        }
+    }
 }
-void frontend::Analyzer::analysisLAndExp(LAndExp*, vector<ir::Instruction*>&) {
-    TODO;
+
+
+// EqExp -> RelExp { ('==' | '!=') RelExp }
+void frontend::Analyzer::analysisEqExp(EqExp* root,vector<ir::Instruction*>& buffer){
+    if ((int)root->children.size() == 1){    // EqExp -> RelExp
+
+        ANALYSIS(relexp, RelExp, 0);     // 分析RelExp节点
+        COPY_EXP_NODE(relexp, root);
+
+    }else{      // EqExp -> RelExp ('==' | '!=') RelExp
+
+        ANALYSIS(relexp1, RelExp, 0);     // 分析RelExp节点
+        root->is_computable = relexp1->is_computable;
+        root->v = relexp1->v;
+        root->t = relexp1->t;
+
+        int i = 1;
+        while (i < (int)root->children.size()){
+            ANALYSIS(relexp2, RelExp, i+1);     // 分析RelExp节点
+            auto tk = dynamic_cast<Term*>(root->children[i])->token.type;   // 运算符
+            
+            root->is_computable = false;
+            Operand op1 = Operand(root->v, root->t);
+            Operand op2 = Operand(relexp2->v, relexp2->t);
+            type_transform(op1, op2, buffer);
+            Operand des = Operand("t" + std::to_string(tmp_cnt++), Type::Int);  // 临时操作数
+            if (tk == TokenType::EQL){  // '==' 类型检查 need to do
+                if (op1.type == Type::Int){
+                    buffer.push_back(new Instruction({op1, op2, des, Operator::eq}));
+                }else{
+                    des.type = Type::Float;
+                    buffer.push_back(new Instruction({op1, op2, des, Operator::feq}));
+                }
+            }else{      // !=
+                if (op1.type == Type::Int){
+                    buffer.push_back(new Instruction({op1, op2, des, Operator::neq}));
+                }else{
+                    des.type = Type::Float;
+                    buffer.push_back(new Instruction({op1, op2, des, Operator::fneq}));
+                }
+            }
+
+            root->v = des.name;
+            root->t = Type::Int;
+            // }
+
+            i += 2;
+        }
+    }
 }
-void frontend::Analyzer::analysisLOrExp(LOrExp*, vector<ir::Instruction*>&) {
-    TODO;
+
+
+// LAndExp -> EqExp [ '&&' LAndExp ]
+void frontend::Analyzer::analysisLAndExp(LAndExp* root, vector<ir::Instruction*>& buffer){
+    if ((int)root->children.size() == 1){    // LAndExp -> EqExp
+
+        ANALYSIS(eqexp, EqExp, 0);     // 分析EqExp节点
+        COPY_EXP_NODE(eqexp, root);
+
+    }else{      // LAndExp -> EqExp '&&' LAndExp
+        
+        // LAndExp -> EqExp '&&' LAndExp
+        ANALYSIS(eqexp, EqExp, 0);  // 分析EqExp节点
+        
+        auto tmp = vector<ir::Instruction*>();  // LAndExp节点的IR向量
+        auto andexp = dynamic_cast<LAndExp*>(root->children[2]);  //取得LAndExp节点
+        assert(andexp);
+        analysisLAndExp(andexp, tmp);    // 分析LAndExp节点
+        
+        root->t = Type::Int;    // and表达式结果固定为Int
+
+        Operand op1 = Operand(eqexp->v, eqexp->t);
+        Operand op2 = Operand(andexp->v, andexp->t);
+        Operand des = Operand("t" + std::to_string(tmp_cnt++), Type::Int);    // 临时变量,输出结果为Int
+        Operand t1 = Operand("t" + std::to_string(tmp_cnt++), op1.type);    // 临时变量1
+        
+        buffer.push_back(new Instruction({op1, {}, t1, Operator::mov}));    // 将op1转换为变量
+        buffer.push_back(new Instruction({t1, {}, {"2", Type::IntLiteral}, Operator::_goto}));  // op1成立,判断op2
+        buffer.push_back(new Instruction({{}, {}, {std::to_string(tmp.size()+3), Type::IntLiteral}, Operator::_goto}));
+        buffer.insert(buffer.end(), tmp.begin(), tmp.end());    // 在尾部加入landexp节点的IR向量
+        buffer.push_back(new Instruction({op2, {}, des, Operator::mov}));   // op2成立,des = op2
+        buffer.push_back(new Instruction({{}, {}, {"2", Type::IntLiteral}, Operator::_goto}));
+        buffer.push_back(new Instruction({"0", Type::IntLiteral}, {}, des, Operator::mov));
+
+        root->v = des.name;
+    }
 }
-void frontend::Analyzer::analysisConstExp(ConstExp*, vector<ir::Instruction*>&) {
-    TODO;
+
+
+// LOrExp -> LAndExp [ '||' LOrExp ]
+void frontend::Analyzer::analysisLOrExp(LOrExp* root, vector<ir::Instruction*>& buffer){
+    if ((int)root->children.size() == 1){    // LOrExp -> LAndExp
+
+        ANALYSIS(landexp, LAndExp, 0);
+        COPY_EXP_NODE(landexp, root);
+        
+    }else{      // LOrExp -> LAndExp '||' LOrExp
+        
+        root->t = Type::Int;    // LOrExp表达式计算得到的类型固定为整型变量,测评机貌似不支持IntLiteral
+
+        ANALYSIS(andexp, LAndExp, 0);     // 分析LAndExp节点
+
+        auto tmp = vector<ir::Instruction*>();  // LorExp节点的IR向量
+        auto orexp = dynamic_cast<LOrExp*>(root->children[2]);  //取得LOrExp节点
+        assert(orexp);
+        analysisLOrExp(orexp, tmp);    // 分析LOrExp节点
+
+        // root->is_computable = andexp->is_computable;    // 可简化性赋值为andexp节点
+
+        Operand op1 = Operand(andexp->v, andexp->t);
+        Operand op2 = Operand(orexp->v, orexp->t);
+        Operand t1 = Operand("t" + std::to_string(tmp_cnt++), root->t);    //临时变量1
+        Operand des = Operand("t" + std::to_string(tmp_cnt++), root->t);    //临时变量,结果
+        
+        buffer.push_back(new Instruction({op1, {}, t1, Operator::mov}));    // 将op1转换为变量
+        buffer.push_back(new Instruction({t1, {}, {std::to_string(tmp.size()+3), Type::IntLiteral}, Operator::_goto}));    // if(op1)->des=1
+        buffer.insert(buffer.end(), tmp.begin(), tmp.end());    // 在尾部加入orexp节点的IR向量
+        buffer.push_back(new Instruction({op2, {}, des, Operator::mov}));   // else -> des = op2
+        buffer.push_back(new Instruction({{}, {}, {"2", Type::IntLiteral}, Operator::_goto}));
+        buffer.push_back(new Instruction({"1", Type::IntLiteral}, {}, des, Operator::mov));
+
+        root->v = des.name;
+    }
+}
+
+
+// ConstExp -> AddExp
+void frontend::Analyzer::analysisConstExp(ConstExp* root, vector<ir::Instruction*>& buffer){
+    ANALYSIS(addexp, AddExp, 0);    // 分析AddExp节点
+    root->v = addexp->v;
+    root->t = addexp->t;
 }
